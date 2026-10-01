@@ -3,9 +3,11 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.model.DayTask
+import com.example.data.model.Exam
 import com.example.data.model.TaskMode
 import com.example.data.model.TaskPriority
 import com.example.data.model.TimetableClass
+import com.example.data.repository.SettingsRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -30,24 +32,23 @@ class ExampleRobolectricTest {
         val sample = TimetableClass(
             courseCode = "CS 201",
             courseName = "Data Structures",
+            location = "Hall 302",
             dayOfWeek = 1,
             startTime = "08:30",
-            endTime = "10:00"
+            endTime = "10:00",
+            role = "STUDENT"
         )
 
         // 8:30 = 8 * 60 + 30 = 510 minutes
         assertEquals(510, sample.startMinutes())
         assertEquals(600, sample.endMinutes())
+        assertEquals("Hall 302", sample.venue)
 
-        // Morning 2-hour (120 min) early alert: 510 - 120 = 390 min -> 06:30
-        val morningAlertMins = sample.startMinutes() - 120
-        assertEquals(390, morningAlertMins)
-        assertEquals("06:30", String.format("%02d:%02d", morningAlertMins / 60, morningAlertMins % 60))
-
-        // Pre-session 30 min alert: 510 - 30 = 480 min -> 08:00
-        val sessionAlertMins = sample.startMinutes() - 30
-        assertEquals(480, sessionAlertMins)
-        assertEquals("08:00", String.format("%02d:%02d", sessionAlertMins / 60, sessionAlertMins % 60))
+        // Custom reminder offset test (e.g. 15 min or 60 min)
+        val customOffset = 45
+        val alertMins = sample.startMinutes() - customOffset
+        assertEquals(465, alertMins)
+        assertEquals("07:45", String.format("%02d:%02d", alertMins / 60, alertMins % 60))
     }
 
     @Test
@@ -73,5 +74,38 @@ class ExampleRobolectricTest {
 
         assertEquals(TaskMode.GENERAL, generalTask.mode)
         assertEquals(null, generalTask.linkedCourseCode)
+    }
+
+    @Test
+    fun `test exam priority 1 and time calculation`() {
+        val exam = Exam(
+            unitCode = "MATH 240",
+            unitTitle = "Discrete Mathematics Final",
+            examDate = "2026-10-15",
+            examTime = "14:00",
+            venue = "Great Examination Hall",
+            reminderFrequency = "Daily"
+        )
+
+        assertTrue(exam.isExamTimeSpecified())
+        assertEquals(840, exam.examStartMinutes()) // 14:00 = 840 mins
+    }
+
+    @Test
+    fun `test settings repository customization`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val settingsRepo = SettingsRepository(context)
+
+        assertEquals(120, settingsRepo.settings.value.morningOffsetMinutes)
+        assertEquals(30, settingsRepo.settings.value.sessionOffsetMinutes)
+        assertTrue(settingsRepo.settings.value.vibrateInSilentMode)
+
+        settingsRepo.updateMorningOffset(90)
+        settingsRepo.updateSessionOffset(15)
+        settingsRepo.updateRingtone("School Bell")
+
+        assertEquals(90, settingsRepo.settings.value.morningOffsetMinutes)
+        assertEquals(15, settingsRepo.settings.value.sessionOffsetMinutes)
+        assertEquals("School Bell", settingsRepo.settings.value.selectedRingtone)
     }
 }

@@ -23,31 +23,29 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,43 +60,38 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.model.DayTask
+import com.example.data.model.Exam
 import com.example.data.model.TaskMode
 import com.example.data.model.TimetableClass
 import com.example.ui.components.ModeBadge
 import com.example.ui.components.PriorityBadge
-import com.example.ui.components.ReminderAlertBanner
 import com.example.ui.viewmodel.AppTab
-import com.example.ui.viewmodel.TaskFilter
 import com.example.util.DateUtils
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     todayClasses: List<TimetableClass>,
     todayTasks: List<DayTask>,
-    currentTaskFilter: TaskFilter,
-    onFilterChange: (TaskFilter) -> Unit,
+    exams: List<Exam>,
     onToggleTaskComplete: (Long, Boolean) -> Unit,
     onDeleteTask: (Long) -> Unit,
+    onDeleteExam: (Long) -> Unit,
     onOpenUploadDialog: () -> Unit,
     onOpenAddClassDialog: () -> Unit,
     onOpenAddTaskDialog: () -> Unit,
+    onOpenAddExamDialog: () -> Unit,
     onNavigateTab: (AppTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val sortedClasses = todayClasses.sortedBy { it.startMinutes() }
-    val firstClass = sortedClasses.firstOrNull()
-    val nextClass = sortedClasses.firstOrNull()
+    val studentClasses = todayClasses.filter { it.role == "STUDENT" }.sortedBy { it.startMinutes() }
+    val studentTasks = todayTasks.filter { it.mode == TaskMode.STUDENT }
+    val todayDate = DateUtils.todayDateString()
+    val todayExams = exams.filter { it.examDate == todayDate }
+    val upcomingExams = exams.filter { it.examDate >= todayDate }.sortedBy { it.examDate }
 
-    // Filter tasks
-    val filteredTasks = when (currentTaskFilter) {
-        TaskFilter.ALL -> todayTasks
-        TaskFilter.STUDENT -> todayTasks.filter { it.mode == TaskMode.STUDENT }
-        TaskFilter.GENERAL -> todayTasks.filter { it.mode == TaskMode.GENERAL }
-    }
-
-    val completedCount = filteredTasks.count { it.isCompleted }
-    val progress = if (filteredTasks.isNotEmpty()) completedCount.toFloat() / filteredTasks.size else 0f
+    val completedCount = studentTasks.count { it.isCompleted }
+    val progress = if (studentTasks.isNotEmpty()) completedCount.toFloat() / studentTasks.size else 0f
 
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
@@ -109,7 +102,7 @@ fun HomeScreen(
         ) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))
-                // Hero Header Banner
+                // Student Mode Hero Header
                 Card(
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -117,7 +110,6 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().testTag("hero_header_card")
                 ) {
                     Column {
-                        // Banner Graphic
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -126,39 +118,163 @@ fun HomeScreen(
                         ) {
                             Image(
                                 painter = painterResource(id = R.drawable.img_student_schedule_banner_1790792913695),
-                                contentDescription = "Student Schedule Desk",
+                                contentDescription = "Student Desk",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()
                             )
-                            // Subtle gradient overlay
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(
-                                        Color(0xFF0F172A).copy(alpha = 0.35f)
-                                    )
+                                    .background(Color(0xFF0F172A).copy(alpha = 0.4f))
                             )
                             Column(
                                 modifier = Modifier
                                     .align(Alignment.BottomStart)
                                     .padding(14.dp)
                             ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.School, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "STUDENT MODE",
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                                 Text(
                                     text = DateUtils.formatFullDisplayDate(DateUtils.todayDateString()),
                                     color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = "Today's Study & Task Flow",
-                                    color = Color.White,
-                                    fontSize = 20.sp,
+                                    fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
 
-                        // Quick stats summary
+                        // Action Bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "${studentClasses.size} Units Scheduled Today",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "${studentTasks.size} Academic Tasks",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = onOpenAddExamDialog,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.testTag("add_exam_header_btn")
+                                ) {
+                                    Text("+ Add Exam", fontSize = 11.sp)
+                                }
+                                Button(
+                                    onClick = onOpenAddClassDialog,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.testTag("add_unit_header_btn")
+                                ) {
+                                    Text("+ Add Unit", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Feature #10: Priority 1 Exam Alert if an exam is scheduled for today
+            if (todayExams.isNotEmpty()) {
+                item {
+                    val exam = todayExams.first()
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        modifier = Modifier.fillMaxWidth().testTag("exam_today_alert_card")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "⚠️ PRIORITY 1: EXAM TODAY",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = "${exam.unitCode}: ${exam.unitTitle} at ${if (exam.examTime.isNotBlank()) exam.examTime else "Today"} in ${exam.venue.ifBlank { "Main Hall" }}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = if (exam.isExamTimeSpecified())
+                                        "Tasks coinciding with exam time have been voided to allow full preparation."
+                                    else
+                                        "Study reminders active throughout the day.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Feature #8: Upcoming Exams Section (Priority 1)
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Upcoming Exams (${upcomingExams.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenAddExamDialog,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.testTag("add_exam_btn")
+                    ) {
+                        Text("+ Exam", fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (upcomingExams.isEmpty()) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -166,47 +282,26 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = "${todayClasses.size} Classes Scheduled",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "${todayTasks.size - completedCount} tasks pending today",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Button(
-                                onClick = onOpenUploadDialog,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.testTag("home_upload_timetable_btn")
-                            ) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Upload Timetable", fontSize = 12.sp)
-                            }
+                            Text(
+                                text = "No exams scheduled. Tap '+ Exam' to add dates & study reminders.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(upcomingExams, key = { it.id }) { exam ->
+                            ExamCard(exam = exam, onDelete = { onDeleteExam(exam.id) })
                         }
                     }
                 }
             }
 
-            // Smart Reminders Active Banner
-            item {
-                ReminderAlertBanner(
-                    firstClassCode = firstClass?.courseCode,
-                    firstClassTime = firstClass?.startTime,
-                    firstClassLocation = firstClass?.location,
-                    nextSessionCode = nextClass?.courseCode,
-                    nextSessionTime = nextClass?.startTime,
-                    onOpenReminders = { onNavigateTab(AppTab.REMINDERS) }
-                )
-            }
-
-            // Today's Classes Section
+            // Today's Units / Classes Section
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -214,28 +309,29 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Today's Classes (${todayClasses.size})",
+                        text = "Today's Units (${studentClasses.size})",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = "View Week",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .clickable { onNavigateTab(AppTab.TIMETABLE) }
-                            .padding(4.dp)
-                            .testTag("view_week_button")
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onOpenAddClassDialog,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("add_unit_btn")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add Unit", fontSize = 11.sp)
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (todayClasses.isEmpty()) {
+                if (studentClasses.isEmpty()) {
                     Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -244,13 +340,12 @@ fun HomeScreen(
                                 .padding(20.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("No classes scheduled for today!", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text("Enjoy your free study day or upload a schedule.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("No timetable units entered for today.", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("Input unit code, venue, and time, or scan your timetable.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(modifier = Modifier.height(10.dp))
-                            OutlinedButton(onClick = onOpenUploadDialog) {
-                                Text("Import Class Timetable")
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Button(onClick = onOpenAddClassDialog) { Text("Input Unit") }
+                                OutlinedButton(onClick = onOpenUploadDialog) { Text("Scan Timetable") }
                             }
                         }
                     }
@@ -259,17 +354,14 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(sortedClasses) { c ->
-                            TodayClassCard(
-                                timetableClass = c,
-                                onClick = { onNavigateTab(AppTab.TIMETABLE) }
-                            )
+                        items(studentClasses, key = { it.id }) { c ->
+                            TodayClassCard(timetableClass = c, onClick = { onNavigateTab(AppTab.STUDENT) })
                         }
                     }
                 }
             }
 
-            // Day-to-Day Tasks Section
+            // Student Mode Tasks (Includes 2h morning prep & assignments)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -278,12 +370,12 @@ fun HomeScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Day-to-Day Tasks",
+                            text = "Student Day Tasks (${studentTasks.size})",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Includes 2h morning prep & personal day tasks",
+                            text = "Morning wake-up reminders, class attendance, & assignments",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -292,64 +384,16 @@ fun HomeScreen(
                     OutlinedButton(
                         onClick = onOpenAddTaskDialog,
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.testTag("add_task_header_btn")
+                        modifier = Modifier.testTag("add_student_task_btn")
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add Task", fontSize = 12.sp)
+                        Text("Add Task", fontSize = 11.sp)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Mode Filter Tabs: All | Student Mode | General Day Tasks
-                SecondaryTabRow(
-                    selectedTabIndex = when (currentTaskFilter) {
-                        TaskFilter.ALL -> 0
-                        TaskFilter.STUDENT -> 1
-                        TaskFilter.GENERAL -> 2
-                    }
-                ) {
-                    Tab(
-                        selected = currentTaskFilter == TaskFilter.ALL,
-                        onClick = { onFilterChange(TaskFilter.ALL) },
-                        text = { Text("All (${todayTasks.size})", fontSize = 12.sp) },
-                        modifier = Modifier.testTag("filter_all_tab")
-                    )
-                    Tab(
-                        selected = currentTaskFilter == TaskFilter.STUDENT,
-                        onClick = { onFilterChange(TaskFilter.STUDENT) },
-                        text = { Text("🎓 Student Mode", fontSize = 12.sp) },
-                        modifier = Modifier.testTag("filter_student_tab")
-                    )
-                    Tab(
-                        selected = currentTaskFilter == TaskFilter.GENERAL,
-                        onClick = { onFilterChange(TaskFilter.GENERAL) },
-                        text = { Text("📋 General Day", fontSize = 12.sp) },
-                        modifier = Modifier.testTag("filter_general_tab")
-                    )
-                }
-
-                if (filteredTasks.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "$completedCount of ${filteredTasks.size} completed",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "${(progress * 100).toInt()}%",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
+                if (studentTasks.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
                     LinearProgressIndicator(
                         progress = { progress },
                         modifier = Modifier
@@ -360,41 +404,26 @@ fun HomeScreen(
                 }
             }
 
-            // Task list items
-            if (filteredTasks.isEmpty()) {
+            if (studentTasks.isEmpty()) {
                 item {
                     Card(
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(24.dp),
+                                .padding(18.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                text = if (currentTaskFilter == TaskFilter.GENERAL)
-                                    "No general day tasks created yet."
-                                else "No tasks for today.",
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                text = "Add personal day tasks (errands, workouts, chores) or sync student classes!",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = onOpenAddTaskDialog) {
-                                Text("Create Day Task")
-                            }
+                            Text("No student tasks for today.", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                            Text("Add homework, exam review, or sync from timetable units.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             } else {
-                items(filteredTasks, key = { it.id }) { task ->
+                items(studentTasks, key = { it.id }) { task ->
                     TaskCard(
                         task = task,
                         onToggleComplete = { onToggleTaskComplete(task.id, it) },
@@ -408,15 +437,103 @@ fun HomeScreen(
             }
         }
 
-        // Floating Action Button
         FloatingActionButton(
-            onClick = onOpenAddTaskDialog,
+            onClick = onOpenAddClassDialog,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(20.dp)
-                .testTag("home_fab_add_task")
+                .testTag("student_fab_add")
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Add Task")
+            Icon(Icons.Default.Add, contentDescription = "Add Unit")
+        }
+    }
+}
+
+@Composable
+fun ExamCard(
+    exam: Exam,
+    onDelete: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = Modifier.width(220.dp).testTag("exam_card_${exam.id}")
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = Color(0xFFFEE2E2),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = exam.unitCode,
+                        color = Color(0xFF991B1B),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+
+                IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete Exam", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = exam.unitTitle,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(13.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "${exam.examDate} ${if (exam.examTime.isNotBlank()) "at ${exam.examTime}" else ""}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (exam.venue.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = exam.venue,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = "Reminders: ${exam.reminderFrequency}",
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+            }
         }
     }
 }
@@ -440,7 +557,7 @@ fun TodayClassCard(
         modifier = modifier
             .width(220.dp)
             .clickable(onClick = onClick)
-            .testTag("today_class_card_${timetableClass.courseCode}")
+            .testTag("today_class_card_${timetableClass.unitCode}")
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -453,7 +570,7 @@ fun TodayClassCard(
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = timetableClass.courseCode,
+                        text = timetableClass.unitCode,
                         color = barColor,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
@@ -478,7 +595,7 @@ fun TodayClassCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = timetableClass.courseName,
+                text = timetableClass.unitName,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
                 maxLines = 1,
@@ -498,13 +615,13 @@ fun TodayClassCard(
                 )
             }
 
-            if (timetableClass.location.isNotBlank()) {
+            if (timetableClass.venue.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = timetableClass.location,
+                        text = timetableClass.venue,
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -526,7 +643,9 @@ fun TaskCard(
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (task.isCompleted)
+            containerColor = if (task.isVoidedDueToExam)
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+            else if (task.isCompleted)
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
             else MaterialTheme.colorScheme.surface
         ),
@@ -543,7 +662,8 @@ fun TaskCard(
         ) {
             Checkbox(
                 checked = task.isCompleted,
-                onCheckedChange = onToggleComplete,
+                onCheckedChange = if (task.isVoidedDueToExam) null else onToggleComplete,
+                enabled = !task.isVoidedDueToExam,
                 modifier = Modifier.testTag("task_check_${task.id}")
             )
 
@@ -570,6 +690,20 @@ fun TaskCard(
                             )
                         }
                     }
+                    if (task.isVoidedDueToExam) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.error,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "VOIDED (EXAM)",
+                                color = MaterialTheme.colorScheme.onError,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -578,11 +712,19 @@ fun TaskCard(
                     text = task.title,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp,
-                    textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                    textDecoration = if (task.isCompleted || task.isVoidedDueToExam) TextDecoration.LineThrough else TextDecoration.None,
                     color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                 )
 
-                if (task.description.isNotBlank()) {
+                if (task.isVoidedDueToExam) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = task.voidReason.ifBlank { "Suspended: Priority 1 Exam taking place at this time." },
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                } else if (task.description.isNotBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = task.description,

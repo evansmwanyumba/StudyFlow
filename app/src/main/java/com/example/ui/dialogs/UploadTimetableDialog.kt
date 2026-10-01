@@ -3,8 +3,6 @@ package com.example.ui.dialogs
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,12 +29,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,7 +64,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.example.ai.SampleTimetables
 import com.example.ui.viewmodel.AiUploadState
 import com.example.ui.viewmodel.MainViewModel
 
@@ -78,32 +72,18 @@ import com.example.ui.viewmodel.MainViewModel
 fun UploadTimetableDialog(
     viewModel: MainViewModel,
     aiUploadState: AiUploadState,
+    initialRole: String = "STUDENT",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Photo/Image, 1 = Paste Text, 2 = Presets
-    var replaceExisting by remember { mutableStateOf(true) }
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Photo, 1 = Paste Text
+    var selectedRole by remember { mutableStateOf(initialRole) }
+    var replaceExisting by remember { mutableStateOf(false) }
 
-    // Image state
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var selectedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var pastedText by remember { mutableStateOf("") }
 
-    // Text state
-    var pastedText by remember {
-        mutableStateOf(
-            """
-Mon 08:30-10:00 CS201 Data Structures (Turing Hall 302)
-Mon 10:30-12:00 MATH240 Discrete Math (Math Annex 105)
-Tue 09:00-10:30 CS220 Computer Architecture (Eng 204)
-Tue 11:00-12:30 PHYS102 Electromagnetism (Science 410)
-Wed 08:30-10:00 CS201 Data Structures (Turing Hall 302)
-Thu 09:00-10:30 CS220 Computer Architecture (Eng 204)
-Fri 09:30-11:30 PHYS102L Optics Lab (Physics Lab 3)
-            """.trimIndent()
-        )
-    }
-
-    // Photo picker launcher (Complies with Zero-Permission Google Play standards)
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
@@ -120,7 +100,6 @@ Fri 09:30-11:30 PHYS102L Optics Lab (Physics Lab 3)
 
     LaunchedEffect(aiUploadState) {
         if (aiUploadState is AiUploadState.Success) {
-            // Give user a moment to see success then dismiss
             kotlinx.coroutines.delay(1200)
             viewModel.resetAiUploadState()
             onDismiss()
@@ -170,12 +149,12 @@ Fri 09:30-11:30 PHYS102L Optics Lab (Physics Lab 3)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Upload Class Timetable",
+                                text = "Scan & Extract Timetable",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "AI will organize classes & smart alerts",
+                                text = "Reads units, venues, & times directly from your schedule",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -186,14 +165,30 @@ Fri 09:30-11:30 PHYS102L Optics Lab (Physics Lab 3)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Mode Tabs
+                // Role Selector (Student vs Lecturer)
+                SecondaryTabRow(selectedTabIndex = if (selectedRole == "STUDENT") 0 else 1) {
+                    Tab(
+                        selected = selectedRole == "STUDENT",
+                        onClick = { selectedRole = "STUDENT" },
+                        text = { Text("🎓 Student Timetable") }
+                    )
+                    Tab(
+                        selected = selectedRole == "TEACHER",
+                        onClick = { selectedRole = "TEACHER" },
+                        text = { Text("👨‍🏫 Lecturer Timetable") }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Input Mode Tabs
                 SecondaryTabRow(selectedTabIndex = selectedTab) {
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("Photo Upload") },
+                        text = { Text("Scan Photo / Image") },
                         icon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp)) }
                     )
                     Tab(
@@ -202,148 +197,100 @@ Fri 09:30-11:30 PHYS102L Optics Lab (Physics Lab 3)
                         text = { Text("Paste Text") },
                         icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp)) }
                     )
-                    Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        text = { Text("Presets") },
-                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                when (selectedTab) {
-                    0 -> {
-                        // Image Upload Tab
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            if (selectedBitmap != null) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(180.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
-                                ) {
-                                    Image(
-                                        bitmap = selectedBitmap!!.asImageBitmap(),
-                                        contentDescription = "Selected Timetable",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxWidth()
+                if (selectedTab == 0) {
+                    // Image Photo Picker Tab
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (selectedBitmap != null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(190.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                            ) {
+                                Image(
+                                    bitmap = selectedBitmap!!.asImageBitmap(),
+                                    contentDescription = "Timetable Image",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
-                                }
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedButton(
-                                    onClick = {
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("change_photo_button")
+                            ) {
+                                Text("Choose Different Image")
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .border(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                    .clickable {
                                         photoPickerLauncher.launch(
                                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                         )
-                                    },
-                                    modifier = Modifier.fillMaxWidth().testTag("change_photo_button")
-                                ) {
-                                    Text("Change Photo")
-                                }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(160.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                        .border(
-                                            width = 1.dp,
-                                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                                            shape = RoundedCornerShape(16.dp)
-                                        )
-                                        .clickable {
-                                            photoPickerLauncher.launch(
-                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                            )
-                                        }
-                                        .testTag("pick_image_dropzone"),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(
-                                            imageVector = Icons.Default.CloudUpload,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(40.dp)
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            text = "Tap to Select Timetable Photo / Screenshot",
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "PNG, JPG, PDF screenshot",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
                                     }
+                                    .testTag("pick_image_dropzone"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudUpload,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(40.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Tap to Pick Timetable Photo",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Photo of printed paper timetable or phone screenshot",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }
                     }
-
-                    1 -> {
-                        // Paste Text Tab
-                        Column {
-                            Text(
-                                text = "Paste schedule lines or syllabus text:",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            OutlinedTextField(
-                                value = pastedText,
-                                onValueChange = { pastedText = it },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(160.dp)
-                                    .testTag("pasted_schedule_input"),
-                                placeholder = { Text("e.g. Mon 09:00-10:30 CS101 in Hall 3") }
-                            )
-                        }
-                    }
-
-                    2 -> {
-                        // Presets Tab
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = "Select an instant academic curriculum:",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            PresetCard(
-                                title = "Computer Science & Engineering",
-                                subtitle = "Algorithms, Architecture, Discrete Math, Physics Lab",
-                                icon = Icons.Default.AutoAwesome,
-                                onClick = {
-                                    viewModel.loadPresetTimetable(SampleTimetables.ComputerScience, replaceExisting)
-                                }
-                            )
-
-                            PresetCard(
-                                title = "Pre-Med & Biology",
-                                subtitle = "Molecular Bio, Organic Chem, Biostatistics, Labs",
-                                icon = Icons.Default.Science,
-                                onClick = {
-                                    viewModel.loadPresetTimetable(SampleTimetables.PreMedBiology, replaceExisting)
-                                }
-                            )
-
-                            PresetCard(
-                                title = "Business & Finance",
-                                subtitle = "Corporate Finance, Marketing, Macroeconomics, Management",
-                                icon = Icons.Default.Work,
-                                onClick = {
-                                    viewModel.loadPresetTimetable(SampleTimetables.BusinessFinance, replaceExisting)
-                                }
-                            )
-                        }
+                } else {
+                    // Paste Text Tab
+                    Column {
+                        Text(
+                            text = "Paste your timetable text or syllabus sessions:",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedTextField(
+                            value = pastedText,
+                            onValueChange = { pastedText = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .testTag("pasted_schedule_input"),
+                            placeholder = { Text("e.g. Mon 08:30-10:00 CS101 Venue Hall 3\nTue 10:00-11:30 MATH201 Room 102") }
+                        )
                     }
                 }
 
@@ -364,7 +311,7 @@ Fri 09:30-11:30 PHYS102L Optics Lab (Physics Lab 3)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Replace existing timetable entries",
+                        text = "Replace existing units in timetable",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -382,7 +329,7 @@ Fri 09:30-11:30 PHYS102L Optics Lab (Physics Lab 3)
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Analyzing schedule & setting reminders...",
+                                text = "Scanning timetable & extracting units...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -407,79 +354,40 @@ Fri 09:30-11:30 PHYS102L Optics Lab (Physics Lab 3)
                     }
                     is AiUploadState.Error -> {
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "Note: ${aiUploadState.error}. Loaded template schedule instead.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
+                        Row(verticalAlignment = Alignment.Top) {
+                            Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = aiUploadState.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                     is AiUploadState.Idle -> {}
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Actions
-                if (selectedTab != 2) {
-                    Button(
-                        onClick = {
-                            if (selectedTab == 0 && selectedBitmap != null) {
-                                viewModel.uploadTimetableImage(selectedBitmap!!, replaceExisting)
-                            } else if (selectedTab == 1 && pastedText.isNotBlank()) {
-                                viewModel.uploadTimetableText(pastedText, replaceExisting)
-                            }
-                        },
-                        enabled = (selectedTab == 0 && selectedBitmap != null) || (selectedTab == 1 && pastedText.isNotBlank()),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("analyze_timetable_button")
-                    ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Analyze & Create Schedule Tasks")
-                    }
+                Button(
+                    onClick = {
+                        if (selectedTab == 0 && selectedBitmap != null) {
+                            viewModel.uploadTimetableImage(selectedBitmap!!, selectedRole, replaceExisting)
+                        } else if (selectedTab == 1 && pastedText.isNotBlank()) {
+                            viewModel.uploadTimetableText(pastedText, selectedRole, replaceExisting)
+                        }
+                    },
+                    enabled = (selectedTab == 0 && selectedBitmap != null) || (selectedTab == 1 && pastedText.isNotBlank()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("analyze_timetable_button")
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Extract & Save to Timetable")
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun PresetCard(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .testTag("preset_${title.replace(" ", "_").lowercase()}")
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Text(text = subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(text = "Load", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

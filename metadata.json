@@ -1,6 +1,6 @@
 {
   "name": "StudyFlow",
-  "description": "Smart student timetable organizer with morning 2-hour early prep alerts, 30-minute pre-session reminders, AI schedule upload, and dual student/day task modes.",
+  "description": "Smart timetable organizer with morning wake-up alerts for early classes, pre-session venue reminders, AI schedule upload, and student, daily task, and lecturer modes.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

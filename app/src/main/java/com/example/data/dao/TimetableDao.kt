@@ -17,11 +17,17 @@ interface TimetableDao {
     @Query("SELECT * FROM timetable_classes ORDER BY dayOfWeek ASC, startTime ASC")
     suspend fun getAllClassesList(): List<TimetableClass>
 
+    @Query("SELECT * FROM timetable_classes WHERE role = :role ORDER BY dayOfWeek ASC, startTime ASC")
+    fun getClassesByRole(role: String): Flow<List<TimetableClass>>
+
     @Query("SELECT * FROM timetable_classes WHERE dayOfWeek = :dayOfWeek ORDER BY startTime ASC")
     fun getClassesForDay(dayOfWeek: Int): Flow<List<TimetableClass>>
 
     @Query("SELECT * FROM timetable_classes WHERE dayOfWeek = :dayOfWeek ORDER BY startTime ASC")
     suspend fun getClassesForDayList(dayOfWeek: Int): List<TimetableClass>
+
+    @Query("SELECT * FROM timetable_classes WHERE dayOfWeek = :dayOfWeek AND role = :role ORDER BY startTime ASC")
+    suspend fun getClassesForDayAndRoleList(dayOfWeek: Int, role: String): List<TimetableClass>
 
     @Query("SELECT * FROM timetable_classes WHERE id = :id LIMIT 1")
     suspend fun getClassById(id: Long): TimetableClass?

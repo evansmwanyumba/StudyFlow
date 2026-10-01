@@ -28,29 +28,50 @@ class TimetableAiParser {
         "#EC4899", "#10B981", "#06B6D4", "#6366F1"
     )
 
-    suspend fun parseFromImage(bitmap: Bitmap): Result<List<TimetableClass>> = withContext(Dispatchers.IO) {
+    private fun resolveApiKey(customKey: String?): String {
+        if (!customKey.isNullOrBlank()) return customKey.trim()
+        val buildKey = BuildConfig.GEMINI_API_KEY
+        if (buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY") {
+            return buildKey.trim()
+        }
+        return ""
+    }
+
+    suspend fun parseFromImage(
+        bitmap: Bitmap,
+        role: String = "STUDENT",
+        customApiKey: String? = null
+    ): Result<List<TimetableClass>> = withContext(Dispatchers.IO) {
+        val apiKey = resolveApiKey(customApiKey)
+        if (apiKey.isBlank()) {
+            return@withContext Result.failure(
+                Exception("Gemini API key not found. Please enter your Gemini API key in Settings -> Gemini API Key to scan timetable images, or add your timetable manually.")
+            )
+        }
+
         try {
-            val apiKey = BuildConfig.GEMINI_API_KEY
-            if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-                // If API key is placeholder, use intelligent sample schedule or message
-                return@withContext Result.success(SampleTimetables.ComputerScience)
+            val base64Image = bitmapToBase64(bitmap)
+            val roleInstructions = if (role == "TEACHER") {
+                "This is a Teacher/Lecturer teaching timetable. Extract the teaching units, assigned venue/hall/room, class/group name, and time slots."
+            } else {
+                "This is a Student class timetable. Extract course units, venue/room, lecture/lab category, instructor name, and time slots."
             }
 
-            val base64Image = bitmapToBase64(bitmap)
             val prompt = """
-                Analyze this student class timetable or syllabus image carefully.
-                Extract all class sessions and return ONLY a valid JSON array of objects.
-                Each object must have the following keys:
-                - "courseCode": String (e.g. "CS 101", "MATH 240")
-                - "courseName": String (e.g. "Intro to Computer Science", "Calculus I")
-                - "instructor": String (e.g. "Dr. Miller", or empty string if not found)
-                - "location": String (e.g. "Hall 302", "Lab B", or empty string)
+                $roleInstructions
+                Analyze this timetable image thoroughly and extract every scheduled session.
+                Accurately read the text from the image. Do not invent or fabricate classes.
+                Return ONLY a JSON array of objects with the following keys for each class:
+                - "courseCode": String (Unit code or course title, e.g. "CS101", "MTH202")
+                - "courseName": String (Full unit title or description)
+                - "instructor": String (Lecturer/instructor or group name if indicated, or empty string)
+                - "location": String (Venue, classroom, or hall e.g. "LH 101", "Lab 2", or empty string)
                 - "dayOfWeek": Integer (1 for Monday, 2 for Tuesday, 3 for Wednesday, 4 for Thursday, 5 for Friday, 6 for Saturday, 7 for Sunday)
                 - "startTime": String in 24-hour "HH:mm" format (e.g. "08:30", "14:00")
-                - "endTime": String in 24-hour "HH:mm" format (e.g. "10:00", "15:30")
+                - "endTime": String in 24-hour "HH:mm" format (e.g. "10:00", "16:00")
                 - "category": String ("Lecture", "Lab", "Tutorial", "Seminar", or "Exam")
 
-                Do NOT include markdown fences like ```json, just return the raw JSON array.
+                Return ONLY raw JSON, with no markdown code blocks.
             """.trimIndent()
 
             val requestJson = JSONObject().apply {
@@ -71,7 +92,7 @@ class TimetableAiParser {
                 }
                 put("contents", contents)
                 put("generationConfig", JSONObject().apply {
-                    put("temperature", 0.2)
+                    put("temperature", 0.1)
                     put("responseMimeType", "application/json")
                 })
             }
@@ -89,99 +110,90 @@ class TimetableAiParser {
             val responseBody = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                return@withContext Result.failure(Exception("Gemini API error: ${response.code} $responseBody"))
+                return@withContext Result.failure(Exception("Gemini API error (${response.code}): $responseBody"))
             }
 
-            val classes = parseGeminiResponse(responseBody)
+            val classes = parseGeminiResponse(responseBody, role)
             if (classes.isNotEmpty()) {
                 Result.success(classes)
             } else {
-                Result.success(SampleTimetables.ComputerScience)
+                Result.failure(Exception("No class sessions could be identified from this image. Please ensure the timetable is clearly visible or input units manually."))
             }
         } catch (e: Exception) {
-            // Fallback gracefully to high quality template so user workflow is uninterrupted
-            Result.success(SampleTimetables.ComputerScience)
+            Result.failure(Exception("Scan failed: ${e.message ?: "Unknown error"}. You can input units manually."))
         }
     }
 
-    suspend fun parseFromText(text: String): Result<List<TimetableClass>> = withContext(Dispatchers.IO) {
-        try {
-            val apiKey = BuildConfig.GEMINI_API_KEY
-            if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-                val localParsed = parseTextLocally(text)
-                return@withContext if (localParsed.isNotEmpty()) {
-                    Result.success(localParsed)
-                } else {
-                    Result.success(SampleTimetables.ComputerScience)
-                }
-            }
+    suspend fun parseFromText(
+        text: String,
+        role: String = "STUDENT",
+        customApiKey: String? = null
+    ): Result<List<TimetableClass>> = withContext(Dispatchers.IO) {
+        val apiKey = resolveApiKey(customApiKey)
+        if (apiKey.isNotBlank()) {
+            try {
+                val prompt = """
+                    Extract all recurring timetable sessions from the following text into a JSON array:
+                    $text
 
-            val prompt = """
-                Extract all recurring student classes from this timetable text/syllabus into a structured JSON array.
-                Text to analyze:
-                $text
+                    Return ONLY a JSON array with these keys for each class:
+                    - "courseCode": String
+                    - "courseName": String
+                    - "instructor": String
+                    - "location": String (Venue)
+                    - "dayOfWeek": Integer (1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun)
+                    - "startTime": String in 24h format "HH:mm"
+                    - "endTime": String in 24h format "HH:mm"
+                    - "category": String ("Lecture", "Lab", "Tutorial", "Seminar", "Exam")
 
-                Return ONLY a JSON array with these keys for each class:
-                - "courseCode": String
-                - "courseName": String
-                - "instructor": String
-                - "location": String
-                - "dayOfWeek": Integer (1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun)
-                - "startTime": String in 24h format "HH:mm" (e.g. "09:00")
-                - "endTime": String in 24h format "HH:mm" (e.g. "10:30")
-                - "category": String ("Lecture", "Lab", "Tutorial", "Seminar", "Exam")
+                    Do not add markdown fences.
+                """.trimIndent()
 
-                Do NOT wrap in markdown fences.
-            """.trimIndent()
-
-            val requestJson = JSONObject().apply {
-                val contents = JSONArray().apply {
-                    val contentObj = JSONObject().apply {
-                        val parts = JSONArray().apply {
-                            put(JSONObject().apply { put("text", prompt) })
+                val requestJson = JSONObject().apply {
+                    val contents = JSONArray().apply {
+                        val contentObj = JSONObject().apply {
+                            val parts = JSONArray().apply {
+                                put(JSONObject().apply { put("text", prompt) })
+                            }
+                            put("parts", parts)
                         }
-                        put("parts", parts)
+                        put("content", contentObj)
                     }
-                    put(contentObj)
+                    put("contents", contents)
+                    put("generationConfig", JSONObject().apply {
+                        put("temperature", 0.1)
+                        put("responseMimeType", "application/json")
+                    })
                 }
-                put("contents", contents)
-                put("generationConfig", JSONObject().apply {
-                    put("temperature", 0.2)
-                    put("responseMimeType", "application/json")
-                })
+
+                val mediaType = "application/json; charset=utf-8".toMediaType()
+                val body = requestJson.toString().toRequestBody(mediaType)
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
+
+                val request = Request.Builder().url(url).post(body).build()
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                if (response.isSuccessful) {
+                    val classes = parseGeminiResponse(responseBody, role)
+                    if (classes.isNotEmpty()) {
+                        return@withContext Result.success(classes)
+                    }
+                }
+            } catch (_: Exception) {
             }
+        }
 
-            val mediaType = "application/json; charset=utf-8".toMediaType()
-            val body = requestJson.toString().toRequestBody(mediaType)
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
-
-            val request = Request.Builder()
-                .url(url)
-                .post(body)
-                .build()
-
-            val response = client.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
-
-            if (!response.isSuccessful) {
-                val localParsed = parseTextLocally(text)
-                return@withContext if (localParsed.isNotEmpty()) Result.success(localParsed) else Result.success(SampleTimetables.ComputerScience)
-            }
-
-            val classes = parseGeminiResponse(responseBody)
-            if (classes.isNotEmpty()) {
-                Result.success(classes)
-            } else {
-                val local = parseTextLocally(text)
-                Result.success(if (local.isNotEmpty()) local else SampleTimetables.ComputerScience)
-            }
-        } catch (e: Exception) {
-            val local = parseTextLocally(text)
-            Result.success(if (local.isNotEmpty()) local else SampleTimetables.ComputerScience)
+        // Local regex parser without AI fallback
+        val local = parseTextLocally(text, role)
+        if (local.isNotEmpty()) {
+            Result.success(local)
+        } else {
+            Result.failure(Exception("Could not parse schedule text. Please use format like 'Mon 09:00-10:30 CS101 Venue Hall A' or add units manually."))
         }
     }
 
-    private fun parseGeminiResponse(jsonString: String): List<TimetableClass> {
+    private fun parseGeminiResponse(jsonString: String, role: String): List<TimetableClass> {
         val result = mutableListOf<TimetableClass>()
         try {
             val root = JSONObject(jsonString)
@@ -191,16 +203,15 @@ class TimetableAiParser {
             val parts = content.optJSONArray("parts") ?: return emptyList()
             val rawText = parts.optJSONObject(0)?.optString("text") ?: return emptyList()
 
-            val cleaned = rawText.trim()
-                .removePrefix("```json")
-                .removePrefix("```")
-                .removeSuffix("```")
-                .trim()
-
-            val jsonArray = JSONArray(cleaned)
+            val startIndex = rawText.indexOf('[')
+            val endIndex = rawText.lastIndexOf(']')
+            if (startIndex == -1 || endIndex == -1 || endIndex <= startIndex) {
+                return emptyList()
+            }
+            val jsonArray = JSONArray(rawText.substring(startIndex, endIndex + 1))
             for (i in 0 until jsonArray.length()) {
                 val item = jsonArray.getJSONObject(i)
-                val code = item.optString("courseCode", "COURSE").ifBlank { "COURSE" }
+                val code = item.optString("courseCode", "UNIT").ifBlank { "UNIT" }
                 val name = item.optString("courseName", code)
                 val instructor = item.optString("instructor", "")
                 val location = item.optString("location", "")
@@ -213,20 +224,20 @@ class TimetableAiParser {
 
                 result.add(
                     TimetableClass(
-                        courseCode = code,
-                        courseName = name,
-                        instructor = instructor,
-                        location = location,
+                        courseCode = code.trim().uppercase(),
+                        courseName = name.trim(),
+                        instructor = instructor.trim(),
+                        location = location.trim(),
                         dayOfWeek = day,
                         startTime = normalizeTime(start),
                         endTime = normalizeTime(end),
                         colorHex = colorHex,
-                        category = category
+                        category = category,
+                        role = role
                     )
                 )
             }
         } catch (_: Exception) {
-            // ignore and return what was parsed
         }
         return result
     }
@@ -244,14 +255,23 @@ class TimetableAiParser {
 
     private fun bitmapToBase64(bitmap: Bitmap): String {
         val outputStream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+        val maxDim = 1280
+        val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
+            val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+            val (w, h) = if (bitmap.width > bitmap.height) {
+                Pair(maxDim, (maxDim / ratio).toInt().coerceAtLeast(1))
+            } else {
+                Pair((maxDim * ratio).toInt().coerceAtLeast(1), maxDim)
+            }
+            Bitmap.createScaledBitmap(bitmap, w, h, true)
+        } else {
+            bitmap
+        }
+        scaled.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
         return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 
-    /**
-     * Local heuristic regex parser for syllabus / timetable text.
-     */
-    private fun parseTextLocally(text: String): List<TimetableClass> {
+    private fun parseTextLocally(text: String, role: String): List<TimetableClass> {
         val list = mutableListOf<TimetableClass>()
         val lines = text.lines()
         var colorIdx = 0
@@ -264,7 +284,6 @@ class TimetableAiParser {
             val l = line.trim()
             if (l.isBlank()) continue
 
-            // Look for day
             var foundDay = 1
             for ((key, dayVal) in daysMap) {
                 if (l.contains(key, ignoreCase = true)) {
@@ -273,16 +292,14 @@ class TimetableAiParser {
                 }
             }
 
-            // Look for time pattern: HH:MM or H:MM
             val timeRegex = Regex("""(\d{1,2}:\d{2})\s*(?:-|to)\s*(\d{1,2}:\d{2})""")
             val match = timeRegex.find(l)
             val startTime = match?.groupValues?.getOrNull(1) ?: "09:00"
             val endTime = match?.groupValues?.getOrNull(2) ?: "10:30"
 
-            // Look for course code like CS101, MATH201, BIO-100
-            val codeRegex = Regex("""[A-Z]{2,5}\s*[-]?\s*\d{2,4}[A-Z]?""")
+            val codeRegex = Regex("""[A-Z]{2,6}\s*[-]?\s*\d{2,4}[A-Z]?""")
             val codeMatch = codeRegex.find(l)
-            val courseCode = codeMatch?.value ?: "CLASS"
+            val courseCode = codeMatch?.value ?: "UNIT"
 
             val remaining = l.replace(courseCode, "")
                 .replace(startTime, "")
@@ -290,7 +307,7 @@ class TimetableAiParser {
                 .replace("-", "")
                 .trim()
 
-            val courseName = if (remaining.isNotBlank()) remaining else "$courseCode Class"
+            val courseName = if (remaining.isNotBlank()) remaining else "$courseCode Unit"
 
             list.add(
                 TimetableClass(
@@ -300,7 +317,8 @@ class TimetableAiParser {
                     startTime = normalizeTime(startTime),
                     endTime = normalizeTime(endTime),
                     colorHex = colors[colorIdx % colors.size],
-                    category = if (l.contains("lab", ignoreCase = true)) "Lab" else "Lecture"
+                    category = if (l.contains("lab", ignoreCase = true)) "Lab" else "Lecture",
+                    role = role
                 )
             )
             colorIdx++

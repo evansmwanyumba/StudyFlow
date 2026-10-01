@@ -18,14 +18,15 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.CoPresent
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.outlined.Alarm
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Checklist
-import androidx.compose.material.icons.outlined.Today
+import androidx.compose.material.icons.outlined.CoPresent
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -38,7 +39,6 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -56,11 +56,13 @@ import com.example.data.model.DayTask
 import com.example.data.model.TimetableClass
 import com.example.ui.dialogs.AddEditClassDialog
 import com.example.ui.dialogs.AddEditTaskDialog
+import com.example.ui.dialogs.AddExamDialog
 import com.example.ui.dialogs.UploadTimetableDialog
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.RemindersScreen
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.TasksScreen
-import com.example.ui.screens.TimetableScreen
+import com.example.ui.screens.TeacherModeScreen
 import com.example.ui.theme.StudyFlowTheme
 import com.example.ui.viewmodel.AppTab
 import com.example.ui.viewmodel.MainViewModel
@@ -80,24 +82,26 @@ class MainActivity : ComponentActivity() {
                 val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
                 val allClasses by viewModel.allClasses.collectAsStateWithLifecycle()
                 val allTasks by viewModel.allTasks.collectAsStateWithLifecycle()
+                val allExams by viewModel.allExams.collectAsStateWithLifecycle()
+                val userSettings by viewModel.userSettings.collectAsStateWithLifecycle()
                 val selectedDayOfWeek by viewModel.selectedDayOfWeek.collectAsStateWithLifecycle()
                 val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
-                val taskFilter by viewModel.taskFilter.collectAsStateWithLifecycle()
                 val aiUploadState by viewModel.aiUploadState.collectAsStateWithLifecycle()
-                val morningAlertEnabled by viewModel.morningAlertEnabled.collectAsStateWithLifecycle()
-                val sessionAlertEnabled by viewModel.sessionAlertEnabled.collectAsStateWithLifecycle()
 
                 // Dialog states
                 var showUploadDialog by remember { mutableStateOf(false) }
+                var uploadDialogRole by remember { mutableStateOf("STUDENT") }
                 var showAddClassDialog by remember { mutableStateOf(false) }
+                var addClassDialogRole by remember { mutableStateOf("STUDENT") }
                 var showAddTaskDialog by remember { mutableStateOf(false) }
+                var showAddExamDialog by remember { mutableStateOf(false) }
                 var editingClass by remember { mutableStateOf<TimetableClass?>(null) }
                 var editingTask by remember { mutableStateOf<DayTask?>(null) }
 
-                // System back button returns to Agenda if on other tabs
-                if (currentTab != AppTab.AGENDA) {
+                // System back button returns to Student tab if on other tabs
+                if (currentTab != AppTab.STUDENT) {
                     BackHandler {
-                        viewModel.setTab(AppTab.AGENDA)
+                        viewModel.setTab(AppTab.STUDENT)
                     }
                 }
 
@@ -114,14 +118,26 @@ class MainActivity : ComponentActivity() {
                                 title = {
                                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                         Icon(
-                                            imageVector = Icons.Default.School,
+                                            imageVector = when (currentTab) {
+                                                AppTab.STUDENT -> Icons.Default.School
+                                                AppTab.GENERAL_TASKS -> Icons.Default.TaskAlt
+                                                AppTab.TEACHER -> Icons.Default.CoPresent
+                                                AppTab.REMINDERS -> Icons.Default.Alarm
+                                                AppTab.SETTINGS -> Icons.Default.Settings
+                                            },
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(24.dp)
                                         )
                                         androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(8.dp))
                                         Text(
-                                            text = "StudyFlow",
+                                            text = when (currentTab) {
+                                                AppTab.STUDENT -> "Student Mode"
+                                                AppTab.GENERAL_TASKS -> "Daily Tasks"
+                                                AppTab.TEACHER -> "Lecturer Mode"
+                                                AppTab.REMINDERS -> "Alarms & Alerts"
+                                                AppTab.SETTINGS -> "Settings"
+                                            },
                                             fontWeight = FontWeight.ExtraBold,
                                             fontSize = 19.sp,
                                             color = MaterialTheme.colorScheme.onSurface
@@ -129,15 +145,20 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 actions = {
-                                    IconButton(
-                                        onClick = { showUploadDialog = true },
-                                        modifier = Modifier.testTag("appbar_upload_btn")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.AutoAwesome,
-                                            contentDescription = "AI Upload Timetable",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
+                                    if (currentTab == AppTab.STUDENT || currentTab == AppTab.TEACHER) {
+                                        IconButton(
+                                            onClick = {
+                                                uploadDialogRole = if (currentTab == AppTab.TEACHER) "TEACHER" else "STUDENT"
+                                                showUploadDialog = true
+                                            },
+                                            modifier = Modifier.testTag("appbar_scan_btn")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AutoAwesome,
+                                                contentDescription = "Scan Timetable",
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                     }
                                 },
                                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -153,40 +174,20 @@ class MainActivity : ComponentActivity() {
                                         .testTag("bottom_nav_bar")
                                 ) {
                                     NavigationBarItem(
-                                        selected = currentTab == AppTab.AGENDA,
-                                        onClick = { viewModel.setTab(AppTab.AGENDA) },
+                                        selected = currentTab == AppTab.STUDENT,
+                                        onClick = { viewModel.setTab(AppTab.STUDENT) },
                                         icon = {
                                             Icon(
-                                                if (currentTab == AppTab.AGENDA) Icons.Default.Today else Icons.Outlined.Today,
-                                                contentDescription = "Today"
+                                                if (currentTab == AppTab.STUDENT) Icons.Default.School else Icons.Outlined.School,
+                                                contentDescription = "Student Mode"
                                             )
                                         },
-                                        label = { Text("Today") },
-                                        modifier = Modifier.testTag("nav_tab_agenda")
+                                        label = { Text("Student", fontSize = 11.sp) },
+                                        modifier = Modifier.testTag("nav_tab_student")
                                     )
                                     NavigationBarItem(
-                                        selected = currentTab == AppTab.TIMETABLE,
-                                        onClick = { viewModel.setTab(AppTab.TIMETABLE) },
-                                        icon = {
-                                            BadgedBox(
-                                                badge = {
-                                                    if (allClasses.isNotEmpty()) {
-                                                        Badge { Text("${allClasses.size}") }
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(
-                                                    if (currentTab == AppTab.TIMETABLE) Icons.Default.CalendarMonth else Icons.Outlined.CalendarMonth,
-                                                    contentDescription = "Timetable"
-                                                )
-                                            }
-                                        },
-                                        label = { Text("Timetable") },
-                                        modifier = Modifier.testTag("nav_tab_timetable")
-                                    )
-                                    NavigationBarItem(
-                                        selected = currentTab == AppTab.TASKS,
-                                        onClick = { viewModel.setTab(AppTab.TASKS) },
+                                        selected = currentTab == AppTab.GENERAL_TASKS,
+                                        onClick = { viewModel.setTab(AppTab.GENERAL_TASKS) },
                                         icon = {
                                             val pending = allTasks.count { !it.isCompleted }
                                             BadgedBox(
@@ -197,13 +198,25 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             ) {
                                                 Icon(
-                                                    if (currentTab == AppTab.TASKS) Icons.Default.Checklist else Icons.Outlined.Checklist,
-                                                    contentDescription = "Tasks"
+                                                    if (currentTab == AppTab.GENERAL_TASKS) Icons.Default.TaskAlt else Icons.Outlined.TaskAlt,
+                                                    contentDescription = "Daily Tasks"
                                                 )
                                             }
                                         },
-                                        label = { Text("Day Tasks") },
-                                        modifier = Modifier.testTag("nav_tab_tasks")
+                                        label = { Text("Daily Tasks", fontSize = 11.sp) },
+                                        modifier = Modifier.testTag("nav_tab_daily_tasks")
+                                    )
+                                    NavigationBarItem(
+                                        selected = currentTab == AppTab.TEACHER,
+                                        onClick = { viewModel.setTab(AppTab.TEACHER) },
+                                        icon = {
+                                            Icon(
+                                                if (currentTab == AppTab.TEACHER) Icons.Default.CoPresent else Icons.Outlined.CoPresent,
+                                                contentDescription = "Lecturer"
+                                            )
+                                        },
+                                        label = { Text("Lecturer", fontSize = 11.sp) },
+                                        modifier = Modifier.testTag("nav_tab_lecturer")
                                     )
                                     NavigationBarItem(
                                         selected = currentTab == AppTab.REMINDERS,
@@ -211,11 +224,23 @@ class MainActivity : ComponentActivity() {
                                         icon = {
                                             Icon(
                                                 if (currentTab == AppTab.REMINDERS) Icons.Default.Alarm else Icons.Outlined.Alarm,
-                                                contentDescription = "Reminders"
+                                                contentDescription = "Alarms"
                                             )
                                         },
-                                        label = { Text("Reminders") },
+                                        label = { Text("Alarms", fontSize = 11.sp) },
                                         modifier = Modifier.testTag("nav_tab_reminders")
+                                    )
+                                    NavigationBarItem(
+                                        selected = currentTab == AppTab.SETTINGS,
+                                        onClick = { viewModel.setTab(AppTab.SETTINGS) },
+                                        icon = {
+                                            Icon(
+                                                if (currentTab == AppTab.SETTINGS) Icons.Default.Settings else Icons.Outlined.Settings,
+                                                contentDescription = "Settings"
+                                            )
+                                        },
+                                        label = { Text("Settings", fontSize = 11.sp) },
+                                        modifier = Modifier.testTag("nav_tab_settings")
                                     )
                                 }
                             }
@@ -229,71 +254,101 @@ class MainActivity : ComponentActivity() {
                             if (isExpanded) {
                                 NavigationRail {
                                     NavigationRailItem(
-                                        selected = currentTab == AppTab.AGENDA,
-                                        onClick = { viewModel.setTab(AppTab.AGENDA) },
-                                        icon = { Icon(Icons.Default.Today, contentDescription = "Today") },
-                                        label = { Text("Today") }
+                                        selected = currentTab == AppTab.STUDENT,
+                                        onClick = { viewModel.setTab(AppTab.STUDENT) },
+                                        icon = { Icon(Icons.Default.School, contentDescription = "Student Mode") },
+                                        label = { Text("Student") }
                                     )
                                     NavigationRailItem(
-                                        selected = currentTab == AppTab.TIMETABLE,
-                                        onClick = { viewModel.setTab(AppTab.TIMETABLE) },
-                                        icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Timetable") },
-                                        label = { Text("Timetable") }
+                                        selected = currentTab == AppTab.GENERAL_TASKS,
+                                        onClick = { viewModel.setTab(AppTab.GENERAL_TASKS) },
+                                        icon = { Icon(Icons.Default.TaskAlt, contentDescription = "Daily Tasks") },
+                                        label = { Text("Daily Tasks") }
                                     )
                                     NavigationRailItem(
-                                        selected = currentTab == AppTab.TASKS,
-                                        onClick = { viewModel.setTab(AppTab.TASKS) },
-                                        icon = { Icon(Icons.Default.Checklist, contentDescription = "Tasks") },
-                                        label = { Text("Tasks") }
+                                        selected = currentTab == AppTab.TEACHER,
+                                        onClick = { viewModel.setTab(AppTab.TEACHER) },
+                                        icon = { Icon(Icons.Default.CoPresent, contentDescription = "Lecturer") },
+                                        label = { Text("Lecturer") }
                                     )
                                     NavigationRailItem(
                                         selected = currentTab == AppTab.REMINDERS,
                                         onClick = { viewModel.setTab(AppTab.REMINDERS) },
-                                        icon = { Icon(Icons.Default.Alarm, contentDescription = "Reminders") },
-                                        label = { Text("Reminders") }
+                                        icon = { Icon(Icons.Default.Alarm, contentDescription = "Alarms") },
+                                        label = { Text("Alarms") }
+                                    )
+                                    NavigationRailItem(
+                                        selected = currentTab == AppTab.SETTINGS,
+                                        onClick = { viewModel.setTab(AppTab.SETTINGS) },
+                                        icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                                        label = { Text("Settings") }
                                     )
                                 }
                             }
 
                             Box(modifier = Modifier.weight(1f)) {
                                 when (currentTab) {
-                                    AppTab.AGENDA -> HomeScreen(
+                                    AppTab.STUDENT -> HomeScreen(
                                         todayClasses = todayClasses,
                                         todayTasks = todayTasks,
-                                        currentTaskFilter = taskFilter,
-                                        onFilterChange = { viewModel.setTaskFilter(it) },
+                                        exams = allExams,
                                         onToggleTaskComplete = { id, comp -> viewModel.toggleTaskComplete(id, comp) },
                                         onDeleteTask = { id -> viewModel.deleteTask(id) },
-                                        onOpenUploadDialog = { showUploadDialog = true },
-                                        onOpenAddClassDialog = { showAddClassDialog = true },
+                                        onDeleteExam = { id -> viewModel.deleteExam(id) },
+                                        onOpenUploadDialog = {
+                                            uploadDialogRole = "STUDENT"
+                                            showUploadDialog = true
+                                        },
+                                        onOpenAddClassDialog = {
+                                            addClassDialogRole = "STUDENT"
+                                            showAddClassDialog = true
+                                        },
                                         onOpenAddTaskDialog = { showAddTaskDialog = true },
+                                        onOpenAddExamDialog = { showAddExamDialog = true },
                                         onNavigateTab = { viewModel.setTab(it) }
                                     )
-                                    AppTab.TIMETABLE -> TimetableScreen(
-                                        allClasses = allClasses,
-                                        selectedDayOfWeek = selectedDayOfWeek,
-                                        onSelectDay = { viewModel.selectDayOfWeek(it) },
-                                        onOpenUploadDialog = { showUploadDialog = true },
-                                        onOpenAddClassDialog = { showAddClassDialog = true },
-                                        onEditClass = { editingClass = it },
-                                        onDeleteClass = { viewModel.deleteClass(it) },
-                                        onSyncWeekTasks = { viewModel.generateWeeklyTasks() }
-                                    )
-                                    AppTab.TASKS -> TasksScreen(
+                                    AppTab.GENERAL_TASKS -> TasksScreen(
                                         tasks = allTasks,
-                                        currentFilter = taskFilter,
-                                        onFilterChange = { viewModel.setTaskFilter(it) },
                                         onToggleComplete = { id, comp -> viewModel.toggleTaskComplete(id, comp) },
-                                        onDeleteTask = { viewModel.deleteTask(it) },
-                                        onOpenAddTaskDialog = { showAddTaskDialog = true }
+                                        onDeleteTask = { id -> viewModel.deleteTask(id) },
+                                        onOpenAddTaskDialog = { showAddTaskDialog = true },
+                                        onCleanPassedTasks = { viewModel.checkAndDiscardPassedTasks() }
+                                    )
+                                    AppTab.TEACHER -> TeacherModeScreen(
+                                        teachingClasses = allClasses.filter { it.role == "TEACHER" },
+                                        selectedDayOfWeek = selectedDayOfWeek,
+                                        defaultTeacherOffset = userSettings.teacherOffsetMinutes,
+                                        onSelectDay = { viewModel.selectDayOfWeek(it) },
+                                        onOpenUploadDialog = {
+                                            uploadDialogRole = "TEACHER"
+                                            showUploadDialog = true
+                                        },
+                                        onOpenAddClassDialog = {
+                                            addClassDialogRole = "TEACHER"
+                                            showAddClassDialog = true
+                                        },
+                                        onEditClass = { editingClass = it },
+                                        onDeleteClass = { viewModel.deleteClass(it) }
                                     )
                                     AppTab.REMINDERS -> RemindersScreen(
                                         todayClasses = todayClasses,
-                                        isMorningAlertEnabled = morningAlertEnabled,
-                                        isSessionAlertEnabled = sessionAlertEnabled,
-                                        onToggleMorningAlert = { viewModel.toggleMorningAlert(it) },
-                                        onToggleSessionAlert = { viewModel.toggleSessionAlert(it) },
-                                        onTriggerTestNotification = { viewModel.triggerTestNotification(it) }
+                                        userSettings = userSettings,
+                                        onTriggerTestAlarm = { isMorning, isSessionStarted ->
+                                            viewModel.triggerTestFullScreenAlarm(isMorning, isSessionStarted)
+                                        },
+                                        onOpenSettings = { viewModel.setTab(AppTab.SETTINGS) }
+                                    )
+                                    AppTab.SETTINGS -> SettingsScreen(
+                                        userSettings = userSettings,
+                                        onUpdateMorningOffsetSeconds = { viewModel.updateMorningOffsetSeconds(it) },
+                                        onUpdateSessionOffsetSeconds = { viewModel.updateSessionOffsetSeconds(it) },
+                                        onUpdateTeacherOffsetSeconds = { viewModel.updateTeacherOffsetSeconds(it) },
+                                        onUpdateNotifyOnSessionStart = { viewModel.updateNotifyOnSessionStart(it) },
+                                        onUpdateRingtone = { viewModel.updateRingtone(it) },
+                                        onUpdateVibrateInSilent = { viewModel.updateVibrateInSilent(it) },
+                                        onUpdateAutoDiscard = { viewModel.updateAutoDiscard(it) },
+                                        onUpdateGeminiKey = { viewModel.updateGeminiApiKey(it) },
+                                        onCleanUpAllData = { viewModel.clearAllData() }
                                     )
                                 }
                             }
@@ -304,6 +359,7 @@ class MainActivity : ComponentActivity() {
                             UploadTimetableDialog(
                                 viewModel = viewModel,
                                 aiUploadState = aiUploadState,
+                                initialRole = uploadDialogRole,
                                 onDismiss = { showUploadDialog = false }
                             )
                         }
@@ -311,6 +367,7 @@ class MainActivity : ComponentActivity() {
                         if (showAddClassDialog) {
                             AddEditClassDialog(
                                 defaultDayOfWeek = selectedDayOfWeek,
+                                defaultRole = addClassDialogRole,
                                 onSave = { viewModel.addClass(it) },
                                 onDismiss = { showAddClassDialog = false }
                             )
@@ -320,6 +377,7 @@ class MainActivity : ComponentActivity() {
                             AddEditClassDialog(
                                 initialClass = editingClass,
                                 defaultDayOfWeek = editingClass!!.dayOfWeek,
+                                defaultRole = editingClass!!.role,
                                 onSave = { viewModel.updateClass(it) },
                                 onDelete = { viewModel.deleteClass(it) },
                                 onDismiss = { editingClass = null }
@@ -332,6 +390,13 @@ class MainActivity : ComponentActivity() {
                                 availableClasses = allClasses,
                                 onSave = { viewModel.addTask(it) },
                                 onDismiss = { showAddTaskDialog = false }
+                            )
+                        }
+
+                        if (showAddExamDialog) {
+                            AddExamDialog(
+                                onSave = { viewModel.addExam(it) },
+                                onDismiss = { showAddExamDialog = false }
                             )
                         }
 
